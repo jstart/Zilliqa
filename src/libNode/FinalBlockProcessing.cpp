@@ -1387,13 +1387,13 @@ bool Node::ProcessMBnForwardTransaction(const bytes& message,
       << entry.m_microBlock.GetHeader().GetEpochNum() << " shard "
       << entry.m_microBlock.GetHeader().GetShardId());
 
-  if (LOOKUP_NODE_MODE && LOG_PARAMETERS) {
+  /*if (LOOKUP_NODE_MODE && LOG_PARAMETERS) {
     LOG_STATE("[MBPCKT] Size:"
               << message.size()
               << " Epoch:" << entry.m_microBlock.GetHeader().GetEpochNum()
               << " Shard:" << entry.m_microBlock.GetHeader().GetShardId()
               << " Txns:" << entry.m_microBlock.GetHeader().GetNumTxs());
-  }
+  }*/
 
   if ((m_mediator.m_txBlockChain.GetLastBlock().GetHeader().GetBlockNum() <
        entry.m_microBlock.GetHeader()
