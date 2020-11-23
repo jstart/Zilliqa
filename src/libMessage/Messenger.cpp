@@ -4937,14 +4937,6 @@ bool Messenger::GetNodeMBnForwardTransaction(const bytes& src,
 
   ProtobufToMicroBlock(result.microblock(), entry.m_microBlock);
 
-  if (LOOKUP_NODE_MODE && LOG_PARAMETERS) {
-    LOG_STATE("[MBPCKT] Size:"
-              << src.size()
-              << " Epoch:" << entry.m_microBlock.GetHeader().GetEpochNum()
-              << " Shard:" << entry.m_microBlock.GetHeader().GetShardId()
-              << " Txns:" << entry.m_microBlock.GetHeader().GetNumTxs());
-  }
-
   unsigned int txnsCount = 0;
 
   for (const auto& txn : result.txnswithreceipt()) {

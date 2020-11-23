@@ -184,6 +184,9 @@ class Node : public Executable {
   std::mutex m_mutexTxnPacketBuffer;
   std::map<bytes, bytes> m_txnPacketBuffer;
 
+  std::mutex m_mutexTxnPktInProcess;
+  std::set<bytes> m_txnPktInProcess;
+
   // txn proc timeout related
   std::mutex m_mutexCVTxnProcFinished;
   std::condition_variable cv_TxnProcFinished;

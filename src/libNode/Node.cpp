@@ -1948,6 +1948,24 @@ bool Node::ProcessTxnPacketFromLookupCore(const bytes& message,
     return false;
   }
 
+  SHA2<HashType::HASH_VARIANT_256> sha256;
+  sha256.Update(message);  // message hash
+  bytes msg_hash = sha256.Finalize();
+
+  {
+    lock_guard<mutex> g(m_mutexTxnPktInProcess);
+    if (m_txnPktInProcess.emplace(msg_hash).second == false) {
+      // Already added to buffer until ready to be processed.
+      // This message could be duplicate one received from peer
+      // while we were waiting for original one to be signalled(cv_txnPacket)
+      // after FB is received.
+      LOG_GENERAL(
+          INFO,
+          "Already have txnpkt to be processed. So ignoring duplicate one!")
+      return false;
+    }
+  }
+
   if (BROADCAST_GOSSIP_MODE) {
     LOG_STATE("[TXNPKTPROC-CORE]["
               << std::setw(15) << std::left
@@ -2040,6 +2058,11 @@ bool Node::ProcessTxnPacketFromLookupCore(const bytes& message,
     m_txnPacketThreadOnHold++;
     cv_txnPacket.wait(lk,
                       [this] { return m_state == MICROBLOCK_CONSENSUS_PREP; });
+  }
+
+  {
+    lock_guard<mutex> g(m_mutexTxnPktInProcess);
+    m_txnPktInProcess.erase(msg_hash);
   }
 
   if (LOG_PARAMETERS) {
@@ -2407,6 +2430,10 @@ void Node::CleanCreatedTransaction() {
   {
     std::lock_guard<mutex> g(m_mutexTxnPacketBuffer);
     m_txnPacketBuffer.clear();
+  }
+  {
+    std::lock_guard<mutex> g(m_mutexTxnPktInProcess);
+    m_txnPktInProcess.clear();
   }
   {
     std::lock_guard<mutex> lock(m_mutexProcessedTransactions);
