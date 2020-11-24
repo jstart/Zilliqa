@@ -1904,6 +1904,24 @@ bool Node::ProcessTxnPacketFromLookupCore(const bytes& message,
     return true;
   }
 
+  SHA2<HashType::HASH_VARIANT_256> sha256;
+  sha256.Update(message);  // message hash
+  bytes msg_hash = sha256.Finalize();
+
+  {
+    lock_guard<mutex> g(m_mutexTxnPktInProcess);
+    if (m_txnPktInProcess.emplace(msg_hash).second == false) {
+      // Already added to buffer until ready to be processed.
+      // This message could be duplicate one received from peer
+      // while we were waiting for original one to be signalled(cv_txnPacket)
+      // after FB is received.
+      LOG_GENERAL(
+          INFO,
+          "Already have txnpkt to be processed. So ignoring duplicate one!")
+      return false;
+    }
+  }
+
   if (LOG_PARAMETERS) {
     int64_t epoch = (m_mediator.m_ds->m_mode == DirectoryService::Mode::IDLE)
                         ? epochNum
@@ -1946,24 +1964,6 @@ bool Node::ProcessTxnPacketFromLookupCore(const bytes& message,
   if (m_mediator.GetIsVacuousEpoch()) {
     LOG_GENERAL(WARNING, "Already in vacuous epoch, stop proc txn");
     return false;
-  }
-
-  SHA2<HashType::HASH_VARIANT_256> sha256;
-  sha256.Update(message);  // message hash
-  bytes msg_hash = sha256.Finalize();
-
-  {
-    lock_guard<mutex> g(m_mutexTxnPktInProcess);
-    if (m_txnPktInProcess.emplace(msg_hash).second == false) {
-      // Already added to buffer until ready to be processed.
-      // This message could be duplicate one received from peer
-      // while we were waiting for original one to be signalled(cv_txnPacket)
-      // after FB is received.
-      LOG_GENERAL(
-          INFO,
-          "Already have txnpkt to be processed. So ignoring duplicate one!")
-      return false;
-    }
   }
 
   if (BROADCAST_GOSSIP_MODE) {
