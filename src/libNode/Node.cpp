@@ -1910,7 +1910,7 @@ bool Node::ProcessTxnPacketFromLookupCore(const bytes& message,
 
   {
     lock_guard<mutex> g(m_mutexTxnPktInProcess);
-    if (m_txnPktInProcess.emplace(msg_hash).second == false) {
+    if (!m_txnPktInProcess.emplace(msg_hash).second) {
       // Already added to buffer until ready to be processed.
       // This message could be duplicate one received from peer
       // while we were waiting for original one to be signalled(cv_txnPacket)
@@ -2058,11 +2058,6 @@ bool Node::ProcessTxnPacketFromLookupCore(const bytes& message,
     m_txnPacketThreadOnHold++;
     cv_txnPacket.wait(lk,
                       [this] { return m_state == MICROBLOCK_CONSENSUS_PREP; });
-  }
-
-  {
-    lock_guard<mutex> g(m_mutexTxnPktInProcess);
-    m_txnPktInProcess.erase(msg_hash);
   }
 
   if (LOG_PARAMETERS) {
