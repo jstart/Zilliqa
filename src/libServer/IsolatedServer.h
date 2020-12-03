@@ -70,6 +70,10 @@ class IsolatedServer : public LookupServer,
                                                  Json::Value& response) {
     response = this->GetTransactionsForTxBlock(request[0u].asString());
   }
+  inline virtual void ExportPersistenceI(const Json::Value& request,
+                                         Json::Value& response) {
+    response = this->ExportPersistence(request[0u].asString());
+  }
 
   std::string GetMinimumGasPrice();
   std::string SetMinimumGasPrice(const std::string& gasPrice);
@@ -80,6 +84,7 @@ class IsolatedServer : public LookupServer,
   bool ValidateTxn(const Transaction& tx, const Address& fromAddr,
                    const Account* sender, const uint128_t& gasPrice);
   bool RetrieveHistory();
+  bool ExportPersistence(const std::string& path);
 };
 
 #endif  // ZILLIQA_SRC_LIBSERVER_ISOLATEDSERVER_H_

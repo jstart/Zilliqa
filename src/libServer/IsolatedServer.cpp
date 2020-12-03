@@ -22,6 +22,7 @@
 
 using namespace jsonrpc;
 using namespace std;
+namespace fs = boost::filesystem;
 
 IsolatedServer::IsolatedServer(Mediator& mediator,
                                AbstractServerConnector& server,
@@ -107,6 +108,11 @@ IsolatedServer::IsolatedServer(Mediator& mediator,
       jsonrpc::Procedure("GetRecentTransactions", jsonrpc::PARAMS_BY_POSITION,
                          jsonrpc::JSON_OBJECT, NULL),
       &LookupServer::GetRecentTransactionsI);
+  AbstractServer<IsolatedServer>::bindAndAddMethod(
+      jsonrpc::Procedure("ExportPersistence", jsonrpc::PARAMS_BY_POSITION,
+                         jsonrpc::JSON_STRING, "param01", jsonrpc::JSON_STRING,
+                         NULL),
+      &IsolatedServer::ExportPersistenceI);
 
   if (timeDelta > 0) {
     AbstractServer<IsolatedServer>::bindAndAddMethod(
@@ -424,6 +430,27 @@ string IsolatedServer::IncreaseBlocknum(const uint32_t& delta) {
   m_blocknum += delta;
 
   return to_string(m_blocknum);
+}
+
+bool IsolatedServer::ExportPersistence(const string& path) {
+  if (!(fs::exists(path) && fs::is_directory(path))) {
+    throw JsonRpcException(RPC_INVALID_PARAMETER,
+                           "Path does not point to valid directory");
+  }
+
+  string name = "persistence_" + to_string(m_blocknum) + ".tar.gz";
+
+  string tar_cmd = "tar -cvzf " + path + "/" + name + " -C " + STORAGE_PATH +
+                   " " + PERSISTENCE_PATH.substr(1);
+
+  int ret = 0;
+  ret = system(tar_cmd.c_str());
+  if (ret) {
+    throw JsonRpcException(RPC_INTERNAL_ERROR,
+                           "Error during tar-ing the persistence");
+  }
+
+  return true;
 }
 
 string IsolatedServer::GetBlocknum() { return to_string(m_blocknum); }
