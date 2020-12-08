@@ -110,9 +110,14 @@ IsolatedServer::IsolatedServer(Mediator& mediator,
       &LookupServer::GetRecentTransactionsI);
   AbstractServer<IsolatedServer>::bindAndAddMethod(
       jsonrpc::Procedure("ExportPersistence", jsonrpc::PARAMS_BY_POSITION,
-                         jsonrpc::JSON_STRING, "param01", jsonrpc::JSON_STRING,
+                         jsonrpc::JSON_BOOLEAN, "param01", jsonrpc::JSON_STRING,
                          NULL),
       &IsolatedServer::ExportPersistenceI);
+  AbstractServer<IsolatedServer>::bindAndAddMethod(
+      jsonrpc::Procedure("ReinitState", jsonrpc::PARAMS_BY_POSITION,
+                         jsonrpc::JSON_STRING, "param01", jsonrpc::JSON_STRING,
+                         "param02", jsonrpc::JSON_STRING, NULL),
+      &IsolatedServer::ReinitStateI);
 
   if (timeDelta > 0) {
     AbstractServer<IsolatedServer>::bindAndAddMethod(
@@ -432,6 +437,41 @@ string IsolatedServer::IncreaseBlocknum(const uint32_t& delta) {
   return to_string(m_blocknum);
 }
 
+bool IsolatedServer::ReinitState(const string& contractString,
+                                 const string& path) {
+  if (!(fs::exists(path) && fs::is_regular_file(path))) {
+    throw JsonRpcException(RPC_INVALID_PARAMETER,
+                           "Path to json file corrupted");
+  }
+
+  const Address contractAddr(contractString);
+
+  const Account* contractAccount =
+      AccountStore::GetInstance().GetAccount(contractAddr);
+
+  if (!contractAccount || !contractAccount->isContract()) {
+    throw JsonRpcException(RPC_INVALID_PARAMETER, "Contract Address invalid");
+  }
+
+  Transaction tx;
+  TxnStatus error_code;
+  TransactionReceipt tx_receipt;
+  uint128_t gasDeposit = 0;
+  uint64_t gasRemained = 0;
+  bool ret;
+
+  if (!AccountStore::GetInstance().InvokeContractCall(
+          contractAddr, NullAddress, m_blocknum, tx, 0, 3, error_code,
+          tx_receipt, gasDeposit, gasRemained, ret, path)) {
+    throw JsonRpcException(RPC_MISC_ERROR, "Unable to set state");
+  }
+  if (!ret) {
+    throw JsonRpcException(RPC_MISC_ERROR, "Unable to re-init");
+  }
+
+  return true;
+}
+
 bool IsolatedServer::ExportPersistence(const string& path) {
   if (!(fs::exists(path) && fs::is_directory(path))) {
     throw JsonRpcException(RPC_INVALID_PARAMETER,
@@ -443,9 +483,7 @@ bool IsolatedServer::ExportPersistence(const string& path) {
   string tar_cmd = "tar -cvzf " + path + "/" + name + " -C " + STORAGE_PATH +
                    " " + PERSISTENCE_PATH.substr(1);
 
-  int ret = 0;
-  ret = system(tar_cmd.c_str());
-  if (ret) {
+  if (!SysCommand::ExecuteCmd(SysCommand::WITH_OUTPUT, tar_cmd)) {
     throw JsonRpcException(RPC_INTERNAL_ERROR,
                            "Error during tar-ing the persistence");
   }

@@ -74,6 +74,11 @@ class IsolatedServer : public LookupServer,
                                          Json::Value& response) {
     response = this->ExportPersistence(request[0u].asString());
   }
+  inline virtual void ReinitStateI(const Json::Value& request,
+                                   Json::Value& response) {
+    response =
+        this->ReinitState(request[0u].asString(), request[1u].asString());
+  }
 
   std::string GetMinimumGasPrice();
   std::string SetMinimumGasPrice(const std::string& gasPrice);
@@ -84,6 +89,7 @@ class IsolatedServer : public LookupServer,
   bool ValidateTxn(const Transaction& tx, const Address& fromAddr,
                    const Account* sender, const uint128_t& gasPrice);
   bool RetrieveHistory();
+  bool ReinitState(const std::string& contractString, const std::string& path);
   bool ExportPersistence(const std::string& path);
 };
 

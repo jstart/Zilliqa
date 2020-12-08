@@ -185,13 +185,11 @@ int main(int argc, const char* argv[]) {
         string remove = "rm -rf " + PERSISTENCE_PATH.substr(1);
         string untar =
             "tar -xvzf " + persistence_path + " --directory " + STORAGE_PATH;
-        int ret = system(remove.c_str());
-        if (ret) {
+        if (!SysCommand::ExecuteCmd(SysCommand::WITHOUT_OUTPUT, remove)) {
           LOG_GENERAL(INFO, "Unable to load persistence from path");
           return ERROR_UNHANDLED_EXCEPTION;
         }
-        ret = system(untar.c_str());
-        if (ret) {
+        if (!SysCommand::ExecuteCmd(SysCommand::WITHOUT_OUTPUT, untar)) {
           LOG_GENERAL(INFO, "Unable to load persistence from path");
           return ERROR_UNHANDLED_EXCEPTION;
         }
