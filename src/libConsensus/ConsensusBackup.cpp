@@ -76,7 +76,7 @@ bool ConsensusBackup::ProcessMessageAnnounce(const bytes& announcement,
   // =======================================
 
   bytes errorMsg;
-  // Following will get us m_prepPrepMicroblock. Remove this comment later.
+  // Following will get us m_prePrepMicroblock.
   MsgContentValidatorFunc func = m_msgContentValidator;
   if (m_prePrepMsgContentValidator) {
     func = m_prePrepMsgContentValidator;
@@ -360,7 +360,7 @@ bool ConsensusBackup::ProcessMessageCollectiveSigCore(
     }
     if (!newAnnouncementMsg.empty()) {
       bytes errorMsg;
-      // Following will get us m_microblock. Remove this comment later.
+      // Following will get us m_microblock.
       bytes newMessageToCosig;
       if (!m_msgContentValidator(
               newAnnouncementMsg, offset, errorMsg, m_consensusID,
@@ -370,7 +370,6 @@ bool ConsensusBackup::ProcessMessageCollectiveSigCore(
         m_state = ERROR;
         return false;
       }
-      // messageToCosig = part of new announcement message
     }
     m_collectiveSig.Serialize(m_messageToCosign, m_messageToCosign.size());
     BitVector::SetBitVector(m_messageToCosign, m_messageToCosign.size(),
@@ -439,8 +438,6 @@ ConsensusBackup::ConsensusBackup(
     MsgContentValidatorFunc msg_validator,
     MsgContentValidatorFunc preprep_msg_validator,
     PostPrePrepValidationFunc post_preprep_validation,
-    //                                 PostFailurePrePrepValidationFunc
-    //                                 post_failed_validation,
     CollectiveSigReadinessFunc collsig_readiness_func)
     : ConsensusCommon(consensus_id, block_number, block_hash, node_id, privkey,
                       committee, class_byte, ins_byte),
@@ -448,7 +445,6 @@ ConsensusBackup::ConsensusBackup(
       m_msgContentValidator(move(msg_validator)),
       m_prePrepMsgContentValidator(move(preprep_msg_validator)),
       m_postPrePrepContentValidation(move(post_preprep_validation)),
-      //      m_postFailurePrepMsgContentValidation(move(post_failed_validation)),
       m_readinessFunc(move(collsig_readiness_func)) {
   LOG_MARKER();
   m_state = INITIAL;

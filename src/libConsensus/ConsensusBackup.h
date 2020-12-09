@@ -38,7 +38,6 @@ typedef std::function<bool(const bytes& input, unsigned int offset,
 
 typedef std::function<bool()> CollectiveSigReadinessFunc;
 typedef std::function<void()> PostPrePrepValidationFunc;
-typedef std::function<bool()> PostFailurePrePrepValidationFunc;
 
 /// Implements the functionality for the consensus committee backup.
 class ConsensusBackup : public ConsensusCommon {
@@ -59,7 +58,6 @@ class ConsensusBackup : public ConsensusCommon {
   MsgContentValidatorFunc m_prePrepMsgContentValidator;
   PostPrePrepValidationFunc m_postPrePrepContentValidation;
   CollectiveSigReadinessFunc m_readinessFunc;
-  // PostFailurePrePrepValidationFunc m_postFailurePrepMsgContentValidation;
 
   // Internal functions
   bool CheckState(Action action);
@@ -115,9 +113,8 @@ class ConsensusBackup : public ConsensusCommon {
           nullptr,  // function handler to execute
                     // any post activity after validation of preprep
                     // message
-      //      PostFailurePrePrepValidationFunc post_failed_validation = nullptr,
-      //      // function to give a chance to check
-      // if the commit failure is resolved before before changing to ERROR state
+      // function to give a chance to check if the commit failure is resolved
+      // before changing to ERROR state
       CollectiveSigReadinessFunc collsig_readiness_func =
           nullptr  // function handler for waits until some cond is met
   );

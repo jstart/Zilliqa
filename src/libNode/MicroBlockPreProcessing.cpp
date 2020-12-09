@@ -200,11 +200,7 @@ bool Node::ComposePrePrepMicroBlock(const uint64_t& microblock_gas_limit) {
   vector<TxnHash> tranHashes;
   TxnHash txRootHash;
 
-  lock(m_mutexCreatedTransactions, m_mutexPrePrepTxnhashes);
-  lock_guard<mutex> g(m_mutexCreatedTransactions, adopt_lock);
-  lock_guard<mutex> g1(m_mutexPrePrepTxnhashes, adopt_lock);
-
-  // txRootHash = ComputeRoot(m_TxnOrder);
+  lock_guard<mutex> g(m_mutexCreatedTransactions);
 
   numTxs = m_createdTxns.size();
 
@@ -1545,14 +1541,9 @@ unsigned char Node::CheckLegitimacyOfTxnHashes(bytes& errorMsg) {
                     "needed anymore!!");
         return false;
       }
-      // If preprep and missing txn hashes, store proposed list from leader to
-      // refer later on receiving missing txns
-      {
-        lock_guard<mutex> g(m_mutexPrePrepTxnhashes);
-        m_prePrepTxnhashes = m_microblock->GetTranHashes();
-      }
       {
         lock_guard<mutex> g(m_mutexPrePrepMissingTxnhashes);
+        m_prePrepMissingTxnhashes.clear();
         m_prePrepMissingTxnhashes = missingTxnHashes;
       }
       if (!Messenger::SetNodeMissingTxnsErrorMsg(
@@ -1828,9 +1819,6 @@ bool Node::PrePrepMicroBlockValidator(
     m_microblock = nullptr;
     return false;
   }
-  // currently unused. but can be used in future.
-  m_prePrepTxnhashes.clear();
-  m_prePrepTxnhashes = m_microblock->GetTranHashes();
   m_microblock = nullptr;
 
   return true;

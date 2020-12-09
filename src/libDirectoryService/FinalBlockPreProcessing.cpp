@@ -251,31 +251,6 @@ bool DirectoryService::RunConsensusOnFinalBlockWhenDSPrimary() {
   LOG_EPOCH(INFO, m_mediator.m_currentEpochNum,
             "I am the leader DS node. Creating final block");
 
-  /*if (m_mediator.ToProcessTransaction()) {
-    m_mediator.m_node->ProcessTransactionWhenShardLeader(m_microBlockGasLimit);
-    if (!AccountStore::GetInstance().SerializeDelta()) {
-      LOG_GENERAL(WARNING, "AccountStore::SerializeDelta failed");
-      return false;
-    }
-  }
-  AccountStore::GetInstance().CommitTempRevertible();
-
-  if (!m_mediator.m_node->ComposeMicroBlock(m_microBlockGasLimit)) {
-    LOG_GENERAL(WARNING, "DS ComposeMicroBlock Failed");
-    m_mediator.m_node->m_microblock = nullptr;
-  } else {
-    lock_guard<mutex> g(m_mutexMicroBlocks);
-    m_microBlocks[m_mediator.m_currentEpochNum].emplace(
-        *(m_mediator.m_node->m_microblock));
-  }
-
-  // stores it in m_finalBlock
-  if (!ComposeFinalBlock()) {
-    LOG_EPOCH(WARNING, m_mediator.m_currentEpochNum,
-              "DirectoryService::RunConsensusOnFinalBlockWhenDSPrimary failed");
-    return false;
-  }*/
-
   if (!m_mediator.m_node->ComposePrePrepMicroBlock(m_microBlockGasLimit)) {
     LOG_GENERAL(WARNING, "DS ComposePrePrepMicroBlock Failed");
     m_mediator.m_node->m_prePrepMicroblock = nullptr;
@@ -352,17 +327,7 @@ bool DirectoryService::RunConsensusOnFinalBlockWhenDSPrimary() {
                1
         << "] BEGIN");
   }
-  /*
-    auto announcementGeneratorFunc =
-        [this](bytes& dst, unsigned int offset, const uint32_t consensusID,
-               const uint64_t blockNumber, const bytes& blockHash,
-               const uint16_t leaderID, const PairOfKey& leaderKey,
-               bytes& messageToCosign) mutable -> bool {
-      return Messenger::SetDSFinalBlockAnnouncement(
-          dst, offset, consensusID, blockNumber, blockHash, leaderID, leaderKey,
-          *m_finalBlock, m_mediator.m_node->m_microblock, messageToCosign);
-    };
-  */
+
   auto preprepAnnouncementGeneratorFunc =
       [this](bytes& dst, unsigned int offset, const uint32_t consensusID,
              const uint64_t blockNumber, const bytes& blockHash,
@@ -1197,10 +1162,6 @@ bool DirectoryService::PrePrepFinalBlockValidator(
       }
       return false;
     }
-    // currently unused. but can be used in future.
-    m_mediator.m_node->m_prePrepTxnhashes.clear();
-    m_mediator.m_node->m_prePrepTxnhashes =
-        m_mediator.m_node->m_microblock->GetTranHashes();
     m_mediator.m_node->m_microblock = nullptr;
   }
 
@@ -1253,10 +1214,6 @@ bool DirectoryService::RunConsensusOnFinalBlockWhenDSBackup() {
 
   m_mediator.m_node->m_txn_distribute_window_open = false;
 
-  /*if (m_mediator.ToProcessTransaction()) {
-    m_mediator.m_node->ProcessTransactionWhenShardBackup(m_microBlockGasLimit);
-  }*/
-
   LOG_EPOCH(
       INFO, m_mediator.m_currentEpochNum,
       "I am a backup DS node. Waiting for PrePrep Final block announcement. "
@@ -1293,19 +1250,6 @@ bool DirectoryService::RunConsensusOnFinalBlockWhenDSBackup() {
     m_mediator.m_node->StartTxnProcessingThread();
   };
 
-  /* auto postFailedPreprepValidationFunc = [this]() -> bool {
-      unique_lock<mutex> lock(m_mutexPrePrepMissingTxnhashes);
-      if(m_prePrepMissingTxnhashes.empty()){
-        return true;
-      }
-      if(cv_missingTxnsReceived.wait_for(lock, chrono::seconds(5))){
-        LOG_GENERAL(INFO, "Didn't received missing txns within timeout!");
-        return false;
-      }
-      return true;
-  };
-  */
-
   auto txnProcessingReadinessfunc = [this]() -> bool {
     return m_mediator.m_node->WaitUntilTxnProcessingDone();
   };
@@ -1319,7 +1263,7 @@ bool DirectoryService::RunConsensusOnFinalBlockWhenDSBackup() {
       static_cast<uint8_t>(DIRECTORY),
       static_cast<uint8_t>(FINALBLOCKCONSENSUS), completeFBValidatorFunc,
       preprepFBValidatorFunc, postPreprepValidationFunc,
-      /* postFailedPreprepValidationFunc, */ txnProcessingReadinessfunc));
+      txnProcessingReadinessfunc));
 
   m_mediator.m_node->m_consensusObject = m_consensusObject;
 

@@ -5662,7 +5662,6 @@ void Lookup::SendTxnPacketPrepare(const uint32_t oldNumShards,
 
   const uint32_t numShards = newNumShards;
 
-  // map<uint32_t, vector<Transaction>> mp;
   {
     lock_guard<mutex> g(m_txnShardMapGeneratedMutex);
     m_txnShardMapGenerated.clear();
@@ -5670,7 +5669,6 @@ void Lookup::SendTxnPacketPrepare(const uint32_t oldNumShards,
     if (!GenTxnToSend(NUM_TXN_TO_SEND_PER_ACCOUNT, m_txnShardMapGenerated,
                       numShards)) {
       LOG_GENERAL(WARNING, "GenTxnToSend failed");
-      // return;
     }
   }
 

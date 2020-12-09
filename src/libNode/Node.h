@@ -463,9 +463,6 @@ class Node : public Executable {
   std::mutex m_mutexShardMember;
   std::shared_ptr<DequeOfNode> m_myShardMembers;
 
-  std::mutex m_mutexPrePrepTxnhashes;
-  std::vector<TxnHash> m_prePrepTxnhashes;
-
   std::mutex m_mutexPrePrepMissingTxnhashes;
   std::vector<TxnHash> m_prePrepMissingTxnhashes;
 

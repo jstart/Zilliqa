@@ -73,7 +73,6 @@ const vector<string> ReadDSAccountsFromConstantsFile(const string& propName) {
   for (auto& acc : pt.get_child("node.ds_accounts")) {
     auto child = acc.second.get_optional<string>(propName);
     if (child) {
-      // LOG_GENERAL("constants " << child.get());
       result.push_back(child.get());
     }
   }
