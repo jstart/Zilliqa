@@ -95,6 +95,7 @@ Lookup::~Lookup() {}
 void Lookup::InitSync() {
   LOG_MARKER();
   auto func = [this]() -> void {
+    LOG_GENERAL(INFO, "Chetan initsync thread id=" << Logger::GetPid());
     uint64_t dsBlockNum = 0;
     uint64_t txBlockNum = 0;
 
@@ -271,6 +272,7 @@ void Lookup::SetLookupNodes() {
 }
 
 void Lookup::SetAboveLayer(VectorOfNode& aboveLayer, const string& xml_node) {
+  LOG_GENERAL(INFO, "Chetan Lookup::SetAboveLaye()" << xml_node);
   using boost::property_tree::ptree;
   ptree pt;
   read_xml("constants.xml", pt);
@@ -293,6 +295,10 @@ void Lookup::SetAboveLayer(VectorOfNode& aboveLayer, const string& xml_node) {
       }
       aboveLayer.emplace_back(pubKey, node);
     }
+  }
+  for (const auto& nn : aboveLayer) {
+    LOG_GENERAL(INFO,
+                "Chetan aboveLayer:" << nn.second.GetPrintableIPAddress());
   }
 }
 
@@ -484,6 +490,10 @@ bool Lookup::GenTxnToSend(size_t num_txn,
 VectorOfNode Lookup::GetLookupNodes() const {
   LOG_MARKER();
   lock_guard<mutex> lock(m_mutexLookupNodes);
+  for (const auto& nn : m_lookupNodes) {
+    LOG_GENERAL(INFO,
+                "Chetan  m_lookupNodes:" << nn.second.GetPrintableIPAddress());
+  }
   return m_lookupNodes;
 }
 
@@ -1112,8 +1122,9 @@ bool Lookup::ProcessEntireShardingStructure() {
   return true;
 }
 
-bool Lookup::ProcessGetDSInfoFromSeed(const bytes& message, unsigned int offset,
-                                      const Peer& from) {
+bool Lookup::ProcessGetDSInfoFromSeed(
+    const bytes& message, unsigned int offset, const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   if (!LOOKUP_NODE_MODE) {
     LOG_GENERAL(WARNING,
                 "Lookup::ProcessGetDSInfoFromSeed not expected to be called "
@@ -1160,9 +1171,14 @@ bool Lookup::ProcessGetDSInfoFromSeed(const bytes& message, unsigned int offset,
     }
   }
 
-  uint128_t ipAddr = from.m_ipAddress;
-  Peer requestingNode(ipAddr, portNo);
-  P2PComm::GetInstance().SendMessage(requestingNode, dsInfoMessage);
+  Peer requestingNode(from.m_ipAddress, portNo);
+  unsigned char startByteResponse = START_BYTE_NORMAL;
+  if (startByte == START_BYTE_SEED_TO_SEED_REQUEST) {
+    requestingNode.m_listenPortHost = from.GetListenPortHost();
+    startByteResponse = START_BYTE_SEED_TO_SEED_RESPONSE;
+  }
+  P2PComm::GetInstance().SendMessage(requestingNode, dsInfoMessage,
+                                     startByteResponse);
 
   return true;
 }
@@ -1189,7 +1205,8 @@ void Lookup::SendMessageToRandomL2lDataProvider(const bytes& message) const {
   Peer tmpPeer(resolved_ip,
                m_l2lDataProviders[index].second.GetListenPortHost());
   LOG_GENERAL(INFO, "Sending message to l2l: " << tmpPeer);
-  P2PComm::GetInstance().SendMessage(tmpPeer, message);
+  P2PComm::GetInstance().SendMessage(tmpPeer, message,
+                                     START_BYTE_SEED_TO_SEED_REQUEST);
 }
 
 void Lookup::SendMessageToRandomSeedNode(const bytes& message) const {
@@ -1230,8 +1247,9 @@ bool Lookup::IsWhitelistedExtSeed(const PubKey& pubKey) {
   return m_extSeedWhitelisted.end() != m_extSeedWhitelisted.find(pubKey);
 }
 
-bool Lookup::ProcessGetDSBlockFromL2l(const bytes& message, unsigned int offset,
-                                      const Peer& from) {
+bool Lookup::ProcessGetDSBlockFromL2l(
+    const bytes& message, unsigned int offset, const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   if (!LOOKUP_NODE_MODE) {
     LOG_GENERAL(WARNING,
                 "Lookup::ProcessGetDSBlockFromL2l not expected to be called "
@@ -1292,29 +1310,36 @@ bool Lookup::ProcessGetDSBlockFromL2l(const bytes& message, unsigned int offset,
         ComposeAndStoreVCDSBlockMessage(blockNum);
       } else {
         // Have not received DS Block yet.
-        return true;
+        return false;
       }
     }
 
     auto it = m_mediator.m_node->m_vcDSBlockStore.find(blockNum);
     if (it != m_mediator.m_node->m_vcDSBlockStore.end()) {
+      unsigned char startByteResponse = START_BYTE_NORMAL;
+      if (startByte == START_BYTE_SEED_TO_SEED_REQUEST) {
+        requestorPeer.m_listenPortHost = from.GetListenPortHost();
+        startByteResponse = START_BYTE_SEED_TO_SEED_RESPONSE;
+      }
       LOG_GENERAL(INFO, "Sending VCDSBlock msg to " << requestorPeer);
-      P2PComm::GetInstance().SendMessage(requestorPeer, it->second);
+      P2PComm::GetInstance().SendMessage(requestorPeer, it->second,
+                                         startByteResponse);
+      return true;
     }
   }
 
-  return true;
+  return false;
 }
 
-bool Lookup::ProcessGetVCFinalBlockFromL2l(const bytes& message,
-                                           unsigned int offset,
-                                           const Peer& from) {
+bool Lookup::ProcessGetVCFinalBlockFromL2l(
+    const bytes& message, unsigned int offset, const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   if (!LOOKUP_NODE_MODE) {
     LOG_GENERAL(
         WARNING,
         "Lookup::ProcessGetVCFinalBlockFromL2l not expected to be called "
         "from other than the LookUp node.");
-    return true;
+    return false;
   }
 
   LOG_MARKER();
@@ -1369,23 +1394,30 @@ bool Lookup::ProcessGetVCFinalBlockFromL2l(const bytes& message,
         ComposeAndStoreVCFinalBlockMessage(blockNum);
       } else {
         // Have not received FB yet.
-        return true;
+        return false;
       }
     }
 
     auto it = m_mediator.m_node->m_vcFinalBlockStore.find(blockNum);
     if (it != m_mediator.m_node->m_vcFinalBlockStore.end()) {
+      unsigned char startByteResponse = START_BYTE_NORMAL;
+      if (startByte == START_BYTE_SEED_TO_SEED_REQUEST) {
+        requestorPeer.m_listenPortHost = from.GetListenPortHost();
+        startByteResponse = START_BYTE_SEED_TO_SEED_RESPONSE;
+      }
       LOG_GENERAL(INFO, "Sending VCFinalBlock msg to " << requestorPeer);
-      P2PComm::GetInstance().SendMessage(requestorPeer, it->second);
+      P2PComm::GetInstance().SendMessage(requestorPeer, it->second,
+                                         startByteResponse);
+      return true;
     }
   }
 
-  return true;
+  return false;
 }
 
-bool Lookup::ProcessGetMBnForwardTxnFromL2l(const bytes& message,
-                                            unsigned int offset,
-                                            const Peer& from) {
+bool Lookup::ProcessGetMBnForwardTxnFromL2l(
+    const bytes& message, unsigned int offset, const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   if (!LOOKUP_NODE_MODE) {
     LOG_GENERAL(
         WARNING,
@@ -1436,8 +1468,14 @@ bool Lookup::ProcessGetMBnForwardTxnFromL2l(const bytes& message,
       if (it != m_mediator.m_node->m_mbnForwardedTxnStore.end()) {
         auto it2 = it->second.find(shardId);
         if (it2 != it->second.end()) {
+          unsigned char startByteResponse = START_BYTE_NORMAL;
+          if (startByte == START_BYTE_SEED_TO_SEED_REQUEST) {
+            requestorPeer.m_listenPortHost = from.GetListenPortHost();
+            startByteResponse = START_BYTE_SEED_TO_SEED_RESPONSE;
+          }
           LOG_GENERAL(INFO, "Sending MbnForrwardTxn msg to " << requestorPeer);
-          P2PComm::GetInstance().SendMessage(requestorPeer, it2->second);
+          P2PComm::GetInstance().SendMessage(requestorPeer, it2->second,
+                                             startByteResponse);
           return true;
         }
       } else {
@@ -1452,7 +1490,7 @@ bool Lookup::ProcessGetMBnForwardTxnFromL2l(const bytes& message,
     this_thread::sleep_for(chrono::seconds(2));
   }
 
-  return true;
+  return false;
 }
 
 bool Lookup::ComposeAndStoreMBnForwardTxnMessage(const uint64_t& blockNum) {
@@ -1619,14 +1657,14 @@ bool Lookup::ComposeAndStoreVCFinalBlockMessage(const uint64_t& blockNum) {
   return true;
 }
 
-bool Lookup::ProcessGetPendingTxnFromL2l(const bytes& message,
-                                         unsigned int offset,
-                                         const Peer& from) {
+bool Lookup::ProcessGetPendingTxnFromL2l(
+    const bytes& message, unsigned int offset, const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   if (!LOOKUP_NODE_MODE) {
     LOG_GENERAL(WARNING,
                 "Lookup::ProcessGetPendingTxnFromL2l not expected to be called "
                 "from other than the LookUp node.");
-    return true;
+    return false;
   }
 
   LOG_MARKER();
@@ -1671,8 +1709,14 @@ bool Lookup::ProcessGetPendingTxnFromL2l(const bytes& message,
       if (it != m_mediator.m_node->m_pendingTxnStore.end()) {
         auto it2 = it->second.find(shardId);
         if (it2 != it->second.end()) {
+          unsigned char startByteResponse = START_BYTE_NORMAL;
+          if (startByte == START_BYTE_SEED_TO_SEED_REQUEST) {
+            requestorPeer.m_listenPortHost = from.GetListenPortHost();
+            startByteResponse = START_BYTE_SEED_TO_SEED_RESPONSE;
+          }
           LOG_GENERAL(INFO, "Sending pending txns to " << requestorPeer);
-          P2PComm::GetInstance().SendMessage(requestorPeer, it2->second);
+          P2PComm::GetInstance().SendMessage(requestorPeer, it2->second,
+                                             startByteResponse);
           return true;
         }
       }
@@ -1681,15 +1725,16 @@ bool Lookup::ProcessGetPendingTxnFromL2l(const bytes& message,
   }
   LOG_GENERAL(INFO, "No pendingtxns!");
 
-  return true;
+  return false;
 }
 
 // TODO: Refactor the code to remove the following assumption
 // lowBlockNum = 1 => Latest block number
 // lowBlockNum = 0 => lowBlockNum set to 1
 // highBlockNum = 0 => Latest block number
-bool Lookup::ProcessGetDSBlockFromSeed(const bytes& message,
-                                       unsigned int offset, const Peer& from) {
+bool Lookup::ProcessGetDSBlockFromSeed(
+    const bytes& message, unsigned int offset, const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   if (!LOOKUP_NODE_MODE) {
     LOG_GENERAL(WARNING,
                 "Lookup::ProcessGetDSBlockFromSeed not expected to be called "
@@ -1731,8 +1776,14 @@ bool Lookup::ProcessGetDSBlockFromSeed(const bytes& message,
   }
 
   Peer requestingNode(from.m_ipAddress, portNo);
+  unsigned char startByteResponse = START_BYTE_NORMAL;
+  if (startByte == START_BYTE_SEED_TO_SEED_REQUEST) {
+    requestingNode.m_listenPortHost = from.GetListenPortHost();
+    startByteResponse = START_BYTE_SEED_TO_SEED_RESPONSE;
+  }
   LOG_GENERAL(INFO, requestingNode);
-  P2PComm::GetInstance().SendMessage(requestingNode, returnMsg);
+  P2PComm::GetInstance().SendMessage(requestingNode, returnMsg,
+                                     startByteResponse);
 
   // Send minerInfo as a separate message since it is not critical information
   if (includeMinerInfo) {
@@ -1770,8 +1821,14 @@ bool Lookup::ProcessGetDSBlockFromSeed(const bytes& message,
                     "Messenger::SetLookupSetMinerInfoFromSeed failed.");
         return false;
       }
+      unsigned char startByteResponse = START_BYTE_NORMAL;
+      if (startByte == START_BYTE_SEED_TO_SEED_REQUEST) {
+        requestingNode.m_listenPortHost = from.GetListenPortHost();
+        startByteResponse = START_BYTE_SEED_TO_SEED_RESPONSE;
+      }
 
-      P2PComm::GetInstance().SendMessage(requestingNode, returnMsg);
+      P2PComm::GetInstance().SendMessage(requestingNode, returnMsg,
+                                         startByteResponse);
       LOG_GENERAL(INFO, "Sent miner info. Count=" << minerInfoPerDS.size());
     } else {
       LOG_GENERAL(INFO, "No miner info sent");
@@ -1849,8 +1906,9 @@ void Lookup::RetrieveDSBlocks(vector<DSBlock>& dsBlocks, uint64_t& lowBlockNum,
 // lowBlockNum = 1 => Latest block number
 // lowBlockNum = 0 => lowBlockNum set to 1
 // highBlockNum = 0 => Latest block number
-bool Lookup::ProcessGetTxBlockFromSeed(const bytes& message,
-                                       unsigned int offset, const Peer& from) {
+bool Lookup::ProcessGetTxBlockFromSeed(
+    const bytes& message, unsigned int offset, const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   if (!LOOKUP_NODE_MODE) {
     LOG_GENERAL(WARNING,
                 "Lookup::ProcessGetTxBlockFromSeed not expected to be called "
@@ -1888,9 +1946,14 @@ bool Lookup::ProcessGetTxBlockFromSeed(const bytes& message,
               "Messenger::SetLookupSetTxBlockFromSeed failed.");
     return false;
   }
-
   Peer requestingNode(from.m_ipAddress, portNo);
-  P2PComm::GetInstance().SendMessage(requestingNode, txBlockMessage);
+  unsigned char startByteResponse = START_BYTE_NORMAL;
+  if (startByte == START_BYTE_SEED_TO_SEED_REQUEST) {
+    requestingNode.m_listenPortHost = from.GetListenPortHost();
+    startByteResponse = START_BYTE_SEED_TO_SEED_RESPONSE;
+  }
+  P2PComm::GetInstance().SendMessage(requestingNode, txBlockMessage,
+                                     startByteResponse);
   LOG_EPOCH(INFO, m_mediator.m_currentEpochNum,
             "Sent Txblks " << lowBlockNum << " - " << highBlockNum);
   return true;
@@ -1960,9 +2023,9 @@ void Lookup::RetrieveTxBlocks(vector<TxBlock>& txBlocks, uint64_t& lowBlockNum,
   }
 }
 
-bool Lookup::ProcessGetStateDeltaFromSeed(const bytes& message,
-                                          unsigned int offset,
-                                          const Peer& from) {
+bool Lookup::ProcessGetStateDeltaFromSeed(
+    const bytes& message, unsigned int offset, const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   if (!LOOKUP_NODE_MODE) {
     LOG_GENERAL(
         WARNING,
@@ -2008,14 +2071,20 @@ bool Lookup::ProcessGetStateDeltaFromSeed(const bytes& message,
 
   uint128_t ipAddr = from.m_ipAddress;
   Peer requestingNode(ipAddr, portNo);
+  unsigned char startByteResponse = START_BYTE_NORMAL;
+  if (startByte == START_BYTE_SEED_TO_SEED_REQUEST) {
+    requestingNode.m_listenPortHost = from.GetListenPortHost();
+    startByteResponse = START_BYTE_SEED_TO_SEED_RESPONSE;
+  }
   LOG_GENERAL(INFO, requestingNode);
-  P2PComm::GetInstance().SendMessage(requestingNode, stateDeltaMessage);
+  P2PComm::GetInstance().SendMessage(requestingNode, stateDeltaMessage,
+                                     startByteResponse);
   return true;
 }
 
-bool Lookup::ProcessGetStateDeltasFromSeed(const bytes& message,
-                                           unsigned int offset,
-                                           const Peer& from) {
+bool Lookup::ProcessGetStateDeltasFromSeed(
+    const bytes& message, unsigned int offset, const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   if (!LOOKUP_NODE_MODE) {
     LOG_GENERAL(
         WARNING,
@@ -2067,15 +2136,22 @@ bool Lookup::ProcessGetStateDeltasFromSeed(const bytes& message,
 
   uint128_t ipAddr = from.m_ipAddress;
   Peer requestingNode(ipAddr, portNo);
+  unsigned char startByteResponse = START_BYTE_NORMAL;
+  if (startByte == START_BYTE_SEED_TO_SEED_REQUEST) {
+    requestingNode.m_listenPortHost = from.GetListenPortHost();
+    startByteResponse = START_BYTE_SEED_TO_SEED_RESPONSE;
+  }
   LOG_GENERAL(INFO, requestingNode);
-  P2PComm::GetInstance().SendMessage(requestingNode, stateDeltasMessage);
+  P2PComm::GetInstance().SendMessage(requestingNode, stateDeltasMessage,
+                                     startByteResponse);
   return true;
 }
 
 // Ex-Archival node code
-bool Lookup::ProcessGetShardFromSeed([[gnu::unused]] const bytes& message,
-                                     [[gnu::unused]] unsigned int offset,
-                                     [[gnu::unused]] const Peer& from) {
+bool Lookup::ProcessGetShardFromSeed(
+    [[gnu::unused]] const bytes& message, [[gnu::unused]] unsigned int offset,
+    [[gnu::unused]] const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   LOG_MARKER();
 
   uint32_t portNo = 0;
@@ -2098,16 +2174,22 @@ bool Lookup::ProcessGetShardFromSeed([[gnu::unused]] const bytes& message,
               "Messenger::SetLookupSetShardsFromSeed failed.");
     return false;
   }
+  unsigned char startByteResponse = START_BYTE_NORMAL;
+  if (startByte == START_BYTE_SEED_TO_SEED_REQUEST) {
+    requestingNode.m_listenPortHost = from.GetListenPortHost();
+    startByteResponse = START_BYTE_SEED_TO_SEED_RESPONSE;
+  }
 
-  P2PComm::GetInstance().SendMessage(requestingNode, msg);
+  P2PComm::GetInstance().SendMessage(requestingNode, msg, startByteResponse);
 
   return true;
 }
 
 // Ex-Archival node code
-bool Lookup::ProcessSetShardFromSeed([[gnu::unused]] const bytes& message,
-                                     [[gnu::unused]] unsigned int offset,
-                                     [[gnu::unused]] const Peer& from) {
+bool Lookup::ProcessSetShardFromSeed(
+    [[gnu::unused]] const bytes& message, [[gnu::unused]] unsigned int offset,
+    [[gnu::unused]] const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   LOG_MARKER();
 
   DequeOfShard shards;
@@ -2190,9 +2272,9 @@ bool Lookup::AddMicroBlockToStorage(const MicroBlock& microblock) {
   return true;
 }
 
-bool Lookup::ProcessGetMicroBlockFromLookup(const bytes& message,
-                                            unsigned int offset,
-                                            const Peer& from) {
+bool Lookup::ProcessGetMicroBlockFromLookup(
+    const bytes& message, unsigned int offset, const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   LOG_MARKER();
 
   if (!LOOKUP_NODE_MODE) {
@@ -2272,13 +2354,18 @@ bool Lookup::ProcessGetMicroBlockFromLookup(const bytes& message,
     return false;
   }
 
-  P2PComm::GetInstance().SendMessage(requestingNode, retMsg);
+  unsigned char startByteResponse = START_BYTE_NORMAL;
+  if (startByte == START_BYTE_SEED_TO_SEED_REQUEST) {
+    requestingNode.m_listenPortHost = from.GetListenPortHost();
+    startByteResponse = START_BYTE_SEED_TO_SEED_RESPONSE;
+  }
+  P2PComm::GetInstance().SendMessage(requestingNode, retMsg, startByteResponse);
   return true;
 }
 
-bool Lookup::ProcessGetMicroBlockFromL2l(const bytes& message,
-                                         unsigned int offset,
-                                         const Peer& from) {
+bool Lookup::ProcessGetMicroBlockFromL2l(
+    const bytes& message, unsigned int offset, const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   LOG_MARKER();
 
   if (!LOOKUP_NODE_MODE) {
@@ -2304,7 +2391,7 @@ bool Lookup::ProcessGetMicroBlockFromL2l(const bytes& message,
 
   if (microBlockHashes.size() == 0) {
     LOG_GENERAL(INFO, "No MicroBlock requested");
-    return true;
+    return false;
   }
 
   LOG_GENERAL(INFO, "Request for " << microBlockHashes.size() << " blocks");
@@ -2315,7 +2402,7 @@ bool Lookup::ProcessGetMicroBlockFromL2l(const bytes& message,
     return false;
   }
 
-  Peer requestingNode(from.m_ipAddress, portNo);
+  Peer requestingNode(from.m_ipAddress, from.m_listenPortHost);
   vector<MicroBlock> retMicroBlocks;
 
   for (const auto& mbhash : microBlockHashes) {
@@ -2352,14 +2439,19 @@ bool Lookup::ProcessGetMicroBlockFromL2l(const bytes& message,
     LOG_GENERAL(WARNING, "Failed to Process ");
     return false;
   }
+  unsigned char startByteResponse = START_BYTE_NORMAL;
+  if (startByte == START_BYTE_SEED_TO_SEED_REQUEST) {
+    requestingNode.m_listenPortHost = from.GetListenPortHost();
+    startByteResponse = START_BYTE_SEED_TO_SEED_RESPONSE;
+  }
 
-  P2PComm::GetInstance().SendMessage(requestingNode, retMsg);
+  P2PComm::GetInstance().SendMessage(requestingNode, retMsg, startByteResponse);
   return true;
 }
 
-bool Lookup::ProcessSetMicroBlockFromLookup(const bytes& message,
-                                            unsigned int offset,
-                                            [[gnu::unused]] const Peer& from) {
+bool Lookup::ProcessSetMicroBlockFromLookup(
+    const bytes& message, unsigned int offset, [[gnu::unused]] const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   if (!LOOKUP_NODE_MODE) {
     LOG_GENERAL(WARNING,
                 "Function not expected to be called from non-lookup node");
@@ -2452,7 +2544,8 @@ void Lookup::SendGetMicroBlockFromL2l(const vector<BlockHash>& mbHashes) {
 
 bool Lookup::ProcessGetCosigsRewardsFromSeed(
     [[gnu::unused]] const bytes& message, [[gnu::unused]] unsigned int offset,
-    [[gnu::unused]] const Peer& from) {
+    [[gnu::unused]] const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   LOG_MARKER();
 
   if (!LOOKUP_NODE_MODE) {
@@ -2568,19 +2661,27 @@ bool Lookup::ProcessGetCosigsRewardsFromSeed(
     return false;
   }
 
-  P2PComm::GetInstance().SendMessage(requestingNode, retMsg);
+  unsigned char startByteResponse = START_BYTE_NORMAL;
+  if (startByte == START_BYTE_SEED_TO_SEED_REQUEST) {
+    requestingNode.m_listenPortHost = from.GetListenPortHost();
+    startByteResponse = START_BYTE_SEED_TO_SEED_RESPONSE;
+  }
+
+  P2PComm::GetInstance().SendMessage(requestingNode, retMsg, startByteResponse);
   return true;
 }
 
 bool Lookup::NoOp([[gnu::unused]] const bytes& message,
                   [[gnu::unused]] unsigned int offset,
-                  [[gnu::unused]] const Peer& from) {
+                  [[gnu::unused]] const Peer& from,
+                  [[gnu::unused]] const unsigned char& startByte) {
   LOG_MARKER();
   return true;
 }
 
-bool Lookup::ProcessSetDSInfoFromSeed(const bytes& message, unsigned int offset,
-                                      const Peer& from) {
+bool Lookup::ProcessSetDSInfoFromSeed(
+    const bytes& message, unsigned int offset, const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   LOG_MARKER();
 
   bool initialDS = false;
@@ -2706,9 +2807,9 @@ bool Lookup::ProcessSetDSInfoFromSeed(const bytes& message, unsigned int offset,
   return true;
 }
 
-bool Lookup::ProcessSetDSBlockFromSeed(const bytes& message,
-                                       unsigned int offset,
-                                       [[gnu::unused]] const Peer& from) {
+bool Lookup::ProcessSetDSBlockFromSeed(
+    const bytes& message, unsigned int offset, [[gnu::unused]] const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   // #ifndef IS_LOOKUP_NODE TODO: uncomment later
 
   LOG_MARKER();
@@ -2801,9 +2902,9 @@ bool Lookup::ProcessSetDSBlockFromSeed(const bytes& message,
   return true;
 }
 
-bool Lookup::ProcessSetMinerInfoFromSeed(const bytes& message,
-                                         unsigned int offset,
-                                         [[gnu::unused]] const Peer& from) {
+bool Lookup::ProcessSetMinerInfoFromSeed(
+    const bytes& message, unsigned int offset, [[gnu::unused]] const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   LOG_MARKER();
 
   if (!LOOKUP_NODE_MODE) {
@@ -2844,8 +2945,9 @@ bool Lookup::ProcessSetMinerInfoFromSeed(const bytes& message,
   return true;
 }
 
-bool Lookup::ProcessSetTxBlockFromSeed(const bytes& message,
-                                       unsigned int offset, const Peer& from) {
+bool Lookup::ProcessSetTxBlockFromSeed(
+    const bytes& message, unsigned int offset, const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   //#ifndef IS_LOOKUP_NODE
   LOG_MARKER();
 
@@ -3134,6 +3236,7 @@ void Lookup::CommitTxBlocks(const vector<TxBlock>& txBlocks) {
 
   if (m_syncType == SyncType::NEW_SYNC || m_syncType == SyncType::NORMAL_SYNC) {
     if (m_mediator.m_currentEpochNum % NUM_FINAL_BLOCK_PER_POW == 0) {
+      LOG_GENERAL(INFO, "Chetan set sync type to 0")
       SetSyncType(SyncType::NO_SYNC);
       m_isFirstLoop = true;
       m_currDSExpired = false;
@@ -3167,6 +3270,7 @@ void Lookup::CommitTxBlocks(const vector<TxBlock>& txBlocks) {
                         .GetEpochNum() < m_mediator.m_currentEpochNum) {
               GetDSInfo();
               m_isFirstLoop = true;
+              LOG_GENERAL(INFO, "Chetan set sync type to 0")
               SetSyncType(SyncType::NO_SYNC);
 
               if (ipChanged) {
@@ -3196,6 +3300,7 @@ void Lookup::CommitTxBlocks(const vector<TxBlock>& txBlocks) {
         m_mediator.m_dsBlockChain.GetLastBlock().GetHeader().GetEpochNum() <
             m_mediator.m_currentEpochNum) {
       m_isFirstLoop = true;
+      LOG_GENERAL(INFO, "Chetan set sync type to 0")
       SetSyncType(SyncType::NO_SYNC);
 
       m_mediator.m_ds->FinishRejoinAsDS(lowBlockNum % NUM_FINAL_BLOCK_PER_POW ==
@@ -3211,6 +3316,7 @@ void Lookup::CommitTxBlocks(const vector<TxBlock>& txBlocks) {
       if (!m_currDSExpired) {
         if (ARCHIVAL_LOOKUP || (!ARCHIVAL_LOOKUP && FinishRejoinAsLookup())) {
           SetSyncType(SyncType::NO_SYNC);
+          LOG_GENERAL(INFO, "Chetan set sync type to 0")
 
           if (m_lookupServer) {
             if (m_lookupServer->StartListening()) {
@@ -3335,9 +3441,9 @@ const vector<Transaction>& Lookup::GetTxnFromShardMap(uint32_t index) {
   return m_txnShardMap[index];
 }
 
-bool Lookup::ProcessSetStateDeltaFromSeed(const bytes& message,
-                                          unsigned int offset,
-                                          const Peer& from) {
+bool Lookup::ProcessSetStateDeltaFromSeed(
+    const bytes& message, unsigned int offset, const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   LOG_MARKER();
 
   if (AlreadyJoinedNetwork()) {
@@ -3385,9 +3491,9 @@ bool Lookup::ProcessSetStateDeltaFromSeed(const bytes& message,
   return true;
 }
 
-bool Lookup::ProcessSetStateDeltasFromSeed(const bytes& message,
-                                           unsigned int offset,
-                                           const Peer& from) {
+bool Lookup::ProcessSetStateDeltasFromSeed(
+    const bytes& message, unsigned int offset, const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   LOG_MARKER();
 
   if (AlreadyJoinedNetwork()) {
@@ -3464,9 +3570,10 @@ bool Lookup::ProcessSetStateDeltasFromSeed(const bytes& message,
   return true;
 }
 
-bool Lookup::ProcessGetTxnsFromLookup([[gnu::unused]] const bytes& message,
-                                      [[gnu::unused]] unsigned int offset,
-                                      [[gnu::unused]] const Peer& from) {
+bool Lookup::ProcessGetTxnsFromLookup(
+    [[gnu::unused]] const bytes& message, [[gnu::unused]] unsigned int offset,
+    [[gnu::unused]] const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   LOG_MARKER();
 
   if (!LOOKUP_NODE_MODE) {
@@ -3543,6 +3650,12 @@ bool Lookup::ProcessGetTxnsFromLookup([[gnu::unused]] const bytes& message,
 
   Peer requestingNode(ipAddr, portNo);
 
+  unsigned char startByteResponse = START_BYTE_NORMAL;
+  if (startByte == START_BYTE_SEED_TO_SEED_REQUEST) {
+    requestingNode.m_listenPortHost = from.GetListenPortHost();
+    startByteResponse = START_BYTE_SEED_TO_SEED_RESPONSE;
+  }
+
   bytes setTxnMsg = {MessageType::LOOKUP,
                      LookupInstructionType::SETTXNFROMLOOKUP};
 
@@ -3552,12 +3665,14 @@ bool Lookup::ProcessGetTxnsFromLookup([[gnu::unused]] const bytes& message,
     return false;
   }
 
-  P2PComm::GetInstance().SendMessage(requestingNode, setTxnMsg);
+  P2PComm::GetInstance().SendMessage(requestingNode, setTxnMsg,
+                                     startByteResponse);
   return true;
 }
 
-bool Lookup::ProcessGetTxnsFromL2l(const bytes& message, unsigned int offset,
-                                   const Peer& from) {
+bool Lookup::ProcessGetTxnsFromL2l(
+    const bytes& message, unsigned int offset, const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   LOG_MARKER();
 
   if (!LOOKUP_NODE_MODE) {
@@ -3585,7 +3700,7 @@ bool Lookup::ProcessGetTxnsFromL2l(const bytes& message, unsigned int offset,
   auto requestedNum = txnhashes.size();
   if (requestedNum == 0) {
     LOG_GENERAL(INFO, "No txn requested");
-    return true;
+    return false;
   }
 
   if (requestedNum > max(DS_MICROBLOCK_GAS_LIMIT, SHARD_MICROBLOCK_GAS_LIMIT)) {
@@ -3639,13 +3754,21 @@ bool Lookup::ProcessGetTxnsFromL2l(const bytes& message, unsigned int offset,
     return false;
   }
 
-  P2PComm::GetInstance().SendMessage(requestingNode, setTxnMsg);
+  unsigned char startByteResponse = START_BYTE_NORMAL;
+  if (startByte == START_BYTE_SEED_TO_SEED_REQUEST) {
+    requestingNode.m_listenPortHost = from.GetListenPortHost();
+    startByteResponse = START_BYTE_SEED_TO_SEED_RESPONSE;
+  }
+
+  P2PComm::GetInstance().SendMessage(requestingNode, setTxnMsg,
+                                     startByteResponse);
   return true;
 }
 
 // Ex archival code
-bool Lookup::ProcessSetTxnsFromLookup(const bytes& message, unsigned int offset,
-                                      [[gnu::unused]] const Peer& from) {
+bool Lookup::ProcessSetTxnsFromLookup(
+    const bytes& message, unsigned int offset, [[gnu::unused]] const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   LOG_MARKER();
 
   BlockHash mbHash;
@@ -3825,6 +3948,7 @@ bool Lookup::InitMining(uint32_t lookupIndex) {
   m_startedPoW = true;
   // set the node as synced
   SetSyncType(NO_SYNC);
+  LOG_GENERAL(INFO, "Chetan set sync type to 0")
   dsBlockRand = m_mediator.m_dsBlockRand;
   txBlockRand = m_mediator.m_txBlockRand;
 
@@ -3875,8 +3999,9 @@ bool Lookup::InitMining(uint32_t lookupIndex) {
   return true;
 }
 
-bool Lookup::ProcessSetLookupOffline(const bytes& message, unsigned int offset,
-                                     const Peer& from) {
+bool Lookup::ProcessSetLookupOffline(
+    const bytes& message, unsigned int offset, const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   LOG_MARKER();
   if (!LOOKUP_NODE_MODE) {
     LOG_GENERAL(WARNING,
@@ -3923,8 +4048,9 @@ bool Lookup::ProcessSetLookupOffline(const bytes& message, unsigned int offset,
   return true;
 }
 
-bool Lookup::ProcessSetLookupOnline(const bytes& message, unsigned int offset,
-                                    const Peer& from) {
+bool Lookup::ProcessSetLookupOnline(
+    const bytes& message, unsigned int offset, const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   LOG_MARKER();
 
   if (!LOOKUP_NODE_MODE) {
@@ -3972,8 +4098,9 @@ bool Lookup::ProcessSetLookupOnline(const bytes& message, unsigned int offset,
   return true;
 }
 
-bool Lookup::ProcessGetOfflineLookups(const bytes& message, unsigned int offset,
-                                      const Peer& from) {
+bool Lookup::ProcessGetOfflineLookups(
+    const bytes& message, unsigned int offset, const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   LOG_MARKER();
   if (!LOOKUP_NODE_MODE) {
     LOG_GENERAL(WARNING,
@@ -4017,12 +4144,19 @@ bool Lookup::ProcessGetOfflineLookups(const bytes& message, unsigned int offset,
     }
   }
 
-  P2PComm::GetInstance().SendMessage(requestingNode, offlineLookupsMessage);
+  unsigned char startByteResponse = START_BYTE_NORMAL;
+  if (startByte == START_BYTE_SEED_TO_SEED_REQUEST) {
+    requestingNode.m_listenPortHost = from.GetListenPortHost();
+    startByteResponse = START_BYTE_SEED_TO_SEED_RESPONSE;
+  }
+  P2PComm::GetInstance().SendMessage(requestingNode, offlineLookupsMessage,
+                                     startByteResponse);
   return true;
 }
 
-bool Lookup::ProcessSetOfflineLookups(const bytes& message, unsigned int offset,
-                                      const Peer& from) {
+bool Lookup::ProcessSetOfflineLookups(
+    const bytes& message, unsigned int offset, const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   LOG_MARKER();
 
   if (LOOKUP_NODE_MODE) {
@@ -4080,8 +4214,9 @@ bool Lookup::ProcessSetOfflineLookups(const bytes& message, unsigned int offset,
   return true;
 }
 
-bool Lookup::ProcessRaiseStartPoW(const bytes& message, unsigned int offset,
-                                  [[gnu::unused]] const Peer& from) {
+bool Lookup::ProcessRaiseStartPoW(
+    const bytes& message, unsigned int offset, [[gnu::unused]] const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   // Message = empty
 
   LOG_MARKER();
@@ -4171,8 +4306,9 @@ bool Lookup::ProcessRaiseStartPoW(const bytes& message, unsigned int offset,
   return true;
 }
 
-bool Lookup::ProcessGetStartPoWFromSeed(const bytes& message,
-                                        unsigned int offset, const Peer& from) {
+bool Lookup::ProcessGetStartPoWFromSeed(
+    const bytes& message, unsigned int offset, const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   LOG_MARKER();
 
   if (!LOOKUP_NODE_MODE) {
@@ -4217,9 +4353,15 @@ bool Lookup::ProcessGetStartPoWFromSeed(const bytes& message,
                 "Messenger::SetLookupSetStartPoWFromSeed failed.");
       return false;
     }
+    Peer requestorNode(from.m_ipAddress, portNo);
+    unsigned char startByteResponse = START_BYTE_NORMAL;
+    if (startByte == START_BYTE_SEED_TO_SEED_REQUEST) {
+      requestorNode.m_listenPortHost = from.GetListenPortHost();
+      startByteResponse = START_BYTE_SEED_TO_SEED_RESPONSE;
+    }
 
     P2PComm::GetInstance().SendMessage(Peer(from.m_ipAddress, portNo),
-                                       setstartpow_message);
+                                       setstartpow_message, startByteResponse);
   } else {
     lock_guard<mutex> g(m_mutexGetStartPoWPeerSet);
     m_getStartPoWPeerSet.emplace(Peer(from.m_ipAddress, portNo));
@@ -4228,9 +4370,10 @@ bool Lookup::ProcessGetStartPoWFromSeed(const bytes& message,
   return true;
 }
 
-bool Lookup::ProcessSetStartPoWFromSeed([[gnu::unused]] const bytes& message,
-                                        [[gnu::unused]] unsigned int offset,
-                                        [[gnu::unused]] const Peer& from) {
+bool Lookup::ProcessSetStartPoWFromSeed(
+    [[gnu::unused]] const bytes& message, [[gnu::unused]] unsigned int offset,
+    [[gnu::unused]] const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   // Message = empty
 
   LOG_MARKER();
@@ -4703,6 +4846,9 @@ bool Lookup::ToBlockMessage(unsigned char ins_byte) {
                 "other than the LookUp node.");
     return true;
   }
+  LOG_GENERAL(INFO, "Chetan ToBlockMessage ins_byte="
+                        << static_cast<unsigned int>(ins_byte)
+                        << " m_syncType=" << m_syncType);
 
   return m_syncType != SyncType::NO_SYNC &&
          (ins_byte != LookupInstructionType::SETDSBLOCKFROMSEED &&
@@ -4763,9 +4909,9 @@ bool Lookup::GetOfflineLookupNodes() {
   return true;
 }
 
-bool Lookup::ProcessGetDirectoryBlocksFromSeed(const bytes& message,
-                                               unsigned int offset,
-                                               const Peer& from) {
+bool Lookup::ProcessGetDirectoryBlocksFromSeed(
+    const bytes& message, unsigned int offset, const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   if (!LOOKUP_NODE_MODE) {
     LOG_GENERAL(
         WARNING,
@@ -4821,7 +4967,13 @@ bool Lookup::ProcessGetDirectoryBlocksFromSeed(const bytes& message,
     return false;
   }
 
-  P2PComm::GetInstance().SendMessage(peer, msg);
+  unsigned char startByteResponse = START_BYTE_NORMAL;
+  if (startByte == START_BYTE_SEED_TO_SEED_REQUEST) {
+    peer.m_listenPortHost = from.GetListenPortHost();
+    startByteResponse = START_BYTE_SEED_TO_SEED_RESPONSE;
+  }
+
+  P2PComm::GetInstance().SendMessage(peer, msg, startByteResponse);
 
   // Send minerInfo as a separate message since it is not critical information
   if (includeMinerInfo) {
@@ -4865,7 +5017,7 @@ bool Lookup::ProcessGetDirectoryBlocksFromSeed(const bytes& message,
         return false;
       }
 
-      P2PComm::GetInstance().SendMessage(peer, msg);
+      P2PComm::GetInstance().SendMessage(peer, msg, startByteResponse);
       LOG_GENERAL(INFO, "Sent miner info. Count=" << minerInfoPerDS.size());
     } else {
       LOG_GENERAL(INFO, "No miner info sent");
@@ -4876,8 +5028,8 @@ bool Lookup::ProcessGetDirectoryBlocksFromSeed(const bytes& message,
 }
 
 bool Lookup::ProcessSetDirectoryBlocksFromSeed(
-    const bytes& message, unsigned int offset,
-    [[gnu::unused]] const Peer& from) {
+    const bytes& message, unsigned int offset, [[gnu::unused]] const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   vector<boost::variant<DSBlock, VCBlock>> dirBlocks;
   uint64_t index_num;
   uint32_t shardingStructureVersion = 0;
@@ -5065,13 +5217,15 @@ void Lookup::ComposeAndSendGetCosigsRewardsFromSeed(const uint64_t& block_num) {
 }
 
 bool Lookup::Execute(const bytes& message, unsigned int offset,
-                     const Peer& from) {
+                     const Peer& from, const unsigned char& startByte) {
   LOG_MARKER();
+  LOG_GENERAL(INFO, "Chetan Lookup::Execute msg_type:"
+                        << static_cast<unsigned>(startByte));
 
   bool result = true;
 
-  typedef bool (Lookup::*InstructionHandler)(const bytes&, unsigned int,
-                                             const Peer&);
+  typedef bool (Lookup::*InstructionHandler)(
+      const bytes&, unsigned int, const Peer&, const unsigned char& startByte);
 
   InstructionHandler ins_handlers[] = {
       &Lookup::ProcessGetDSInfoFromSeed,
@@ -5126,7 +5280,8 @@ bool Lookup::Execute(const bytes& message, unsigned int offset,
   }
 
   if (ins_byte < ins_handlers_count) {
-    result = (this->*ins_handlers[ins_byte])(message, offset + 1, from);
+    result =
+        (this->*ins_handlers[ins_byte])(message, offset + 1, from, startByte);
     if (!result) {
       // To-do: Error recovery
     }
@@ -5504,7 +5659,8 @@ bool Lookup::VerifySenderNode(const Shard& shard,
 }
 
 bool Lookup::ProcessForwardTxn(const bytes& message, unsigned int offset,
-                               const Peer& from) {
+                               const Peer& from,
+                               [[gnu::unused]] const unsigned char& startByte) {
   if (!LOOKUP_NODE_MODE) {
     LOG_GENERAL(WARNING,
                 "Lookup::ProcessForwardTxn not expected to be called from "
@@ -5574,9 +5730,9 @@ bool Lookup::ProcessForwardTxn(const bytes& message, unsigned int offset,
   return true;
 }
 
-bool Lookup::ProcessVCGetLatestDSTxBlockFromSeed(const bytes& message,
-                                                 unsigned int offset,
-                                                 const Peer& from) {
+bool Lookup::ProcessVCGetLatestDSTxBlockFromSeed(
+    const bytes& message, unsigned int offset, const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   LOG_MARKER();
 
   if (!LOOKUP_NODE_MODE) {
@@ -5633,7 +5789,13 @@ bool Lookup::ProcessVCGetLatestDSTxBlockFromSeed(const bytes& message,
   }
 
   Peer requestingNode(from.m_ipAddress, listenPort);
-  P2PComm::GetInstance().SendMessage(requestingNode, dsTxBlocksMessage);
+  unsigned char startByteResponse = START_BYTE_NORMAL;
+  if (startByte == START_BYTE_SEED_TO_SEED_REQUEST) {
+    requestingNode.m_listenPortHost = from.GetListenPortHost();
+    startByteResponse = START_BYTE_SEED_TO_SEED_RESPONSE;
+  }
+  P2PComm::GetInstance().SendMessage(requestingNode, dsTxBlocksMessage,
+                                     startByteResponse);
   return true;
 }
 
@@ -5643,9 +5805,9 @@ void Lookup::SetSyncType(SyncType syncType) {
             "Set sync type to " << syncType);
 }
 
-bool Lookup::ProcessGetDSGuardNetworkInfo(const bytes& message,
-                                          unsigned int offset,
-                                          const Peer& from) {
+bool Lookup::ProcessGetDSGuardNetworkInfo(
+    const bytes& message, unsigned int offset, const Peer& from,
+    [[gnu::unused]] const unsigned char& startByte) {
   if (!LOOKUP_NODE_MODE) {
     LOG_GENERAL(WARNING,
                 "Lookup::ProcessGetDSGuardNetworkInfo not expected to be "
