@@ -1300,6 +1300,7 @@ bool Lookup::ProcessGetDSBlockFromL2l(
         ComposeAndStoreVCDSBlockMessage(blockNum);
       } else {
         // Have not received DS Block yet.
+        // P2PSeed:Return false to cleanup bufferevent in non response case
         return false;
       }
     }
@@ -1329,6 +1330,7 @@ bool Lookup::ProcessGetVCFinalBlockFromL2l(
         WARNING,
         "Lookup::ProcessGetVCFinalBlockFromL2l not expected to be called "
         "from other than the LookUp node.");
+    // P2PSeed:Return false to cleanup bufferevent in non response case
     return false;
   }
 
@@ -1384,6 +1386,7 @@ bool Lookup::ProcessGetVCFinalBlockFromL2l(
         ComposeAndStoreVCFinalBlockMessage(blockNum);
       } else {
         // Have not received FB yet.
+        // P2PSeed:Return false to cleanup bufferevent in non response case
         return false;
       }
     }
@@ -1402,6 +1405,7 @@ bool Lookup::ProcessGetVCFinalBlockFromL2l(
     }
   }
 
+  // P2PSeed:Return false to cleanup bufferevent in non response case
   return false;
 }
 
@@ -1480,6 +1484,7 @@ bool Lookup::ProcessGetMBnForwardTxnFromL2l(
     this_thread::sleep_for(chrono::seconds(2));
   }
 
+  // P2PSeed:Return false to cleanup bufferevent in non response case
   return false;
 }
 
@@ -1715,6 +1720,7 @@ bool Lookup::ProcessGetPendingTxnFromL2l(
   }
   LOG_GENERAL(INFO, "No pendingtxns!");
 
+  // P2PSeed:Return false to cleanup bufferevent in non response case
   return false;
 }
 
@@ -2295,7 +2301,8 @@ bool Lookup::ProcessGetMicroBlockFromLookup(
 
   if (microBlockHashes.size() == 0) {
     LOG_GENERAL(INFO, "No MicroBlock requested");
-    return true;
+    // P2PSeed:Return false to cleanup bufferevent in non response case
+    return false;
   }
 
   LOG_GENERAL(INFO, "Request for " << microBlockHashes.size() << " blocks");
@@ -2381,6 +2388,7 @@ bool Lookup::ProcessGetMicroBlockFromL2l(
 
   if (microBlockHashes.size() == 0) {
     LOG_GENERAL(INFO, "No MicroBlock requested");
+    // P2PSeed:Return false to cleanup bufferevent in non response case
     return false;
   }
 
@@ -3591,7 +3599,8 @@ bool Lookup::ProcessGetTxnsFromLookup(
   auto requestedNum = txnhashes.size();
   if (requestedNum == 0) {
     LOG_GENERAL(INFO, "No txn requested");
-    return true;
+    // P2PSeed:Return false to cleanup bufferevent in non response case
+    return false;
   }
 
   if (requestedNum > max(DS_MICROBLOCK_GAS_LIMIT, SHARD_MICROBLOCK_GAS_LIMIT)) {
@@ -3686,6 +3695,7 @@ bool Lookup::ProcessGetTxnsFromL2l(
   auto requestedNum = txnhashes.size();
   if (requestedNum == 0) {
     LOG_GENERAL(INFO, "No txn requested");
+    // P2PSeed:Return false to cleanup bufferevent in non response case
     return false;
   }
 
