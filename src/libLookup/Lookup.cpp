@@ -1817,11 +1817,6 @@ bool Lookup::ProcessGetDSBlockFromSeed(
                     "Messenger::SetLookupSetMinerInfoFromSeed failed.");
         return false;
       }
-      unsigned char startByteResponse = START_BYTE_NORMAL;
-      if (startByte == START_BYTE_SEED_TO_SEED_REQUEST) {
-        requestingNode.m_listenPortHost = from.GetListenPortHost();
-        startByteResponse = START_BYTE_SEED_TO_SEED_RESPONSE;
-      }
 
       P2PComm::GetInstance().SendMessage(requestingNode, returnMsg,
                                          startByteResponse);
@@ -2400,7 +2395,7 @@ bool Lookup::ProcessGetMicroBlockFromL2l(
     return false;
   }
 
-  Peer requestingNode(from.m_ipAddress, from.m_listenPortHost);
+  Peer requestingNode(from.m_ipAddress, portNo);
   vector<MicroBlock> retMicroBlocks;
 
   for (const auto& mbhash : microBlockHashes) {
