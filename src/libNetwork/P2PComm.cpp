@@ -1039,6 +1039,7 @@ void P2PComm ::EventCbClientSeed([[gnu::unused]] struct bufferevent* bev,
   socklen_t addr_size = sizeof(struct sockaddr_in);
   getpeername(fd, (struct sockaddr*)&cli_addr, &addr_size);
   Peer peer(cli_addr.sin_addr.s_addr, cli_addr.sin_port);
+  LOG_GENERAL(INFO, "P2PSeed EventCbClient peer=" << peer);
   if (events & BEV_EVENT_CONNECTED) {
     // TODO Remove this log
     LOG_GENERAL(INFO, "P2PSeed BEV_EVENT_CONNECTED");
@@ -1047,6 +1048,7 @@ void P2PComm ::EventCbClientSeed([[gnu::unused]] struct bufferevent* bev,
     LOG_GENERAL(WARNING, "P2PSeed BEV_EVENT_ERROR");
     if (!peer.GetIpAddress() == 0 && !peer.GetListenPortHost() == 0) {
       HandleNetworkErrorEvents(peer);
+      bufferevent_set_timeouts(bev, NULL, NULL);
       CloseAndFreeBufferEvent(bev);
     }
   }
@@ -1060,6 +1062,7 @@ void P2PComm ::EventCbClientSeed([[gnu::unused]] struct bufferevent* bev,
     LOG_GENERAL(INFO, "P2PSeed BEV_EVENT_EOF");
     if (!peer.GetIpAddress() == 0 && !peer.GetListenPortHost() == 0) {
       HandleNetworkErrorEvents(peer);
+      bufferevent_set_timeouts(bev, NULL, NULL);
       CloseAndFreeBufferEvent(bev);
     }
   }
