@@ -563,9 +563,9 @@ void P2PComm::CloseAndFreeBufferEvent(struct bufferevent* bufev) {
     if (m_peerConnectionCount[ipAddr] > 0) {
       m_peerConnectionCount[ipAddr]--;
       // TODO Remove log
-      LOG_GENERAL(INFO, "P2PSeed reducing count ipaddr="
-                            << ipAddr << " m_peerConnectionCount="
-                            << m_peerConnectionCount[ipAddr]);
+      LOG_GENERAL(DEBUG, "P2PSeed decrementing connection count for ipaddr="
+                             << ipAddr << " m_peerConnectionCount="
+                             << m_peerConnectionCount[ipAddr]);
     }
   }
   bufferevent_free(bufev);
@@ -589,7 +589,7 @@ void P2PComm::CloseAndFreeBevP2PSeedConn(struct bufferevent* bufev) {
     if (m_peerConnectionCount[ipAddr] > 0) {
       m_peerConnectionCount[ipAddr]--;
       // TODO Remove log
-      LOG_GENERAL(INFO, "P2PSeed reducing count ipaddr="
+      LOG_GENERAL(INFO, "P2PSeed decrementing connection count for ipaddr="
                             << ipAddr << " m_peerConnectionCount="
                             << m_peerConnectionCount[ipAddr]);
     }
@@ -971,8 +971,8 @@ void P2PComm::AcceptConnectionCallback([[gnu::unused]] evconnlistener* listener,
     }
     m_peerConnectionCount[from.GetIpAddress()]++;
     // TODO Remove the log
-    LOG_GENERAL(INFO, "P2PSeed m_peerConnectionCount="
-                          << m_peerConnectionCount[from.GetIpAddress()]);
+    LOG_GENERAL(DEBUG, "P2PSeed m_peerConnectionCount="
+                           << m_peerConnectionCount[from.GetIpAddress()]);
   }
 
   // Set up buffer event for this new connection
@@ -1021,8 +1021,8 @@ void P2PComm::RemoveBevAndDecrConnCountFromMap(const Peer& peer) {
     const uint128_t& ipAddr = peer.GetIpAddress();
     if (m_peerConnectionCount[ipAddr] > 0) {
       m_peerConnectionCount[ipAddr]--;
-      LOG_GENERAL(DEBUG, "P2PSeed reducing count ipaddr = "
-                             << ipAddr << " m_peerConnectionCount = "
+      LOG_GENERAL(DEBUG, "P2PSeed decrementing connection count for ipaddr= "
+                             << ipAddr << " m_peerConnectionCount="
                              << m_peerConnectionCount[ipAddr]);
     }
     for (const auto& it : m_bufferEventMap) {
@@ -1435,6 +1435,7 @@ void P2PComm::SendMessage(const Peer& peer, const bytes& message,
     if (bufferevent_socket_connect(bev, (struct sockaddr*)&serv_addr,
                                    sizeof(serv_addr)) < 0) {
       /* Error starting connection */
+      LOG_GENERAL(WARNING, "Error Failed to establish socket connection !!!")
       bufferevent_free(bev);
       return;
     }
